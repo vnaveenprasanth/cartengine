@@ -4,6 +4,7 @@ import { carts, cartItems, products, orders, orderItems, orderCounter } from '..
 import { eq, and, gte, sql } from 'drizzle-orm';
 import { AppError } from '../errors/AppError';
 import { calculateSubtotal, calculateDiscount } from '../utils/money';
+import { redeemCouponInTransaction } from './coupon.service';
 import type { CheckoutInput } from '../schemas/checkout.schemas';
 
 export async function checkout(input: CheckoutInput) {
@@ -76,9 +77,19 @@ export async function checkout(input: CheckoutInput) {
       }
     }
 
-    // Step 4: Calculate order totals (integer arithmetic only)
+    // Step 4: Redeem coupon atomically (if provided).
+    // Runs inside the same transaction so a failed checkout never consumes the coupon.
+    const orderId = randomUUID();
     const subtotalCents = calculateSubtotal(items);
-    const discountCents = 0; // Coupon logic added in next commit
+    let discountCents = 0;
+    let couponId: string | null = null;
+
+    if (input.couponCode) {
+      const coupon = await redeemCouponInTransaction(tx, input.couponCode, orderId);
+      discountCents = calculateDiscount(subtotalCents, coupon.discountPercent);
+      couponId = coupon.couponId;
+    }
+
     const totalCents = subtotalCents - discountCents;
 
     // Step 5: Increment the global order counter and get the new order number
@@ -91,7 +102,6 @@ export async function checkout(input: CheckoutInput) {
     const orderNumber = counterRows[0].count;
 
     // Step 6: Create the order and snapshot each line item with its price at this moment
-    const orderId = randomUUID();
     await tx.insert(orders).values({
       id: orderId,
       cartId: input.cartId,
@@ -99,6 +109,7 @@ export async function checkout(input: CheckoutInput) {
       subtotalCents,
       discountCents,
       totalCents,
+      couponId,
       orderNumber,
     });
 

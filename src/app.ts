@@ -11,6 +11,7 @@ import { productsRouter } from './routes/products';
 import { cartsRouter } from './routes/carts';
 import { checkoutRouter } from './routes/checkout';
 import { ordersRouter } from './routes/orders';
+import { adminRouter } from './routes/admin';
 
 export const app = express();
 
@@ -25,6 +26,7 @@ app.use('/api/products', productsRouter);
 app.use('/api/carts', cartsRouter);
 app.use('/api/checkout', checkoutRouter);
 app.use('/api/orders', ordersRouter);
+app.use('/api/admin', adminRouter);
 
 // Error handler must be registered after all routes
 app.use(errorHandler);
