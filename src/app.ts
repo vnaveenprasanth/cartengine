@@ -7,6 +7,7 @@ import { products, systemConfig, orderCounter } from './db/schema';
 import { randomUUID } from 'crypto';
 import path from 'path';
 import { errorHandler } from './middleware/errorHandler';
+import { productsRouter } from './routes/products';
 
 export const app = express();
 
@@ -16,6 +17,8 @@ app.use(express.json());
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+app.use('/api/products', productsRouter);
 
 // Error handler must be registered after all routes
 app.use(errorHandler);
