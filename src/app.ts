@@ -9,6 +9,8 @@ import path from 'path';
 import { errorHandler } from './middleware/errorHandler';
 import { productsRouter } from './routes/products';
 import { cartsRouter } from './routes/carts';
+import { checkoutRouter } from './routes/checkout';
+import { ordersRouter } from './routes/orders';
 
 export const app = express();
 
@@ -21,6 +23,8 @@ app.get('/health', (_req, res) => {
 
 app.use('/api/products', productsRouter);
 app.use('/api/carts', cartsRouter);
+app.use('/api/checkout', checkoutRouter);
+app.use('/api/orders', ordersRouter);
 
 // Error handler must be registered after all routes
 app.use(errorHandler);
