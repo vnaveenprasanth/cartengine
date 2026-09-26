@@ -8,6 +8,7 @@ import { randomUUID } from 'crypto';
 import path from 'path';
 import { errorHandler } from './middleware/errorHandler';
 import { productsRouter } from './routes/products';
+import { cartsRouter } from './routes/carts';
 
 export const app = express();
 
@@ -19,6 +20,7 @@ app.get('/health', (_req, res) => {
 });
 
 app.use('/api/products', productsRouter);
+app.use('/api/carts', cartsRouter);
 
 // Error handler must be registered after all routes
 app.use(errorHandler);
