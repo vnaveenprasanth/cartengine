@@ -12,7 +12,9 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@libsql/client": "^0.18.0",
     "cors": "^2.8.5",
+    "drizzle-orm": "^0.45.3",
     "express": "^4.21.2",
     "express-async-errors": "^3.1.1"
   },
@@ -20,6 +22,7 @@
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.1",
     "@types/node": "^22.14.0",
+    "drizzle-kit": "^0.31.11",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.8.3"
   }
