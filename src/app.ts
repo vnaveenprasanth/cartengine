@@ -6,6 +6,7 @@ import { db, initDB } from './db/connection';
 import { products, systemConfig, orderCounter } from './db/schema';
 import { randomUUID } from 'crypto';
 import path from 'path';
+import { errorHandler } from './middleware/errorHandler';
 
 export const app = express();
 
@@ -15,6 +16,9 @@ app.use(express.json());
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+// Error handler must be registered after all routes
+app.use(errorHandler);
 
 const SEED_PRODUCTS = [
   { id: randomUUID(), name: 'Wireless Bluetooth Headphones', priceCents: 7999, inventory: 50 },
