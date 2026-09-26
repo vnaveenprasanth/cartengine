@@ -13,5 +13,5 @@ export async function getOrderById(orderId: string) {
 }
 
 export async function listOrders() {
-  return db.select().from(orders).orderBy(orders.orderNumber);
+  return db.select().from(orders).orderBy(orders.createdAt);
 }

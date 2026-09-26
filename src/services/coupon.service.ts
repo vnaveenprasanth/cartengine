@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import { db } from '../db/connection';
-import { coupons, systemConfig, orderCounter } from '../db/schema';
-import { eq, and } from 'drizzle-orm';
+import { coupons, systemConfig, orders } from '../db/schema';
+import { eq, and, count } from 'drizzle-orm';
 import { AppError } from '../errors/AppError';
 
 export async function generateCoupon() {
@@ -10,19 +10,26 @@ export async function generateCoupon() {
   const interval = parseInt(config['coupon_order_interval'] ?? '5', 10);
   const discountPercent = parseInt(config['coupon_discount_percent'] ?? '10', 10);
 
-  const counterRows = await db.select().from(orderCounter).where(eq(orderCounter.id, 1));
-  const totalOrders = counterRows[0]?.count ?? 0;
+  const orderCountRes = await db.select({ value: count() }).from(orders);
+  const totalOrders = orderCountRes[0].value;
 
-  if (totalOrders < interval) {
+  const couponCountRes = await db.select({ value: count() }).from(coupons);
+  const generatedCoupons = couponCountRes[0].value;
+
+  const maxAllowedCoupons = Math.floor(totalOrders / interval);
+
+  if (generatedCoupons >= maxAllowedCoupons) {
     throw new AppError(
       409,
       'COUPON_MILESTONE_NOT_REACHED',
-      `No milestone reached yet. Need ${interval} orders, currently at ${totalOrders}.`,
+      `No milestone reached yet. Next milestone at order ${
+        (generatedCoupons + 1) * interval
+      }, currently at ${totalOrders}.`,
     );
   }
 
-  // The eligible milestone is the highest multiple of interval not exceeding totalOrders
-  const milestoneOrderNumber = Math.floor(totalOrders / interval) * interval;
+  // The eligible milestone for this new coupon
+  const milestoneOrderNumber = (generatedCoupons + 1) * interval;
 
   const code = `REWARD-${milestoneOrderNumber}-${randomUUID().slice(0, 6).toUpperCase()}`;
 
@@ -35,7 +42,8 @@ export async function generateCoupon() {
       status: 'available',
     });
   } catch {
-    // UNIQUE constraint on milestoneOrderNumber — coupon already generated for this milestone
+    // UNIQUE constraint on milestoneOrderNumber catches race conditions
+    // (e.g. if two admins click Generate at the exact same millisecond)
     throw new AppError(
       409,
       'COUPON_ALREADY_GENERATED',

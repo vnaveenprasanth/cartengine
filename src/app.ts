@@ -1,9 +1,8 @@
-import 'express-async-errors';
 import express from 'express';
 import cors from 'cors';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import { db, initDB } from './db/connection';
-import { products, systemConfig, orderCounter } from './db/schema';
+import { products, systemConfig } from './db/schema';
 import { randomUUID } from 'crypto';
 import path from 'path';
 import { errorHandler } from './middleware/errorHandler';
@@ -56,7 +55,6 @@ export async function bootstrap() {
       { key: 'coupon_order_interval', value: '5' },
       { key: 'coupon_discount_percent', value: '10' },
     ]);
-    await db.insert(orderCounter).values([{ id: 1, count: 0 }]);
     console.log('Database seeded');
   }
 }

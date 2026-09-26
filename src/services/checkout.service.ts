@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import { db } from '../db/connection';
-import { carts, cartItems, products, orders, orderItems, orderCounter } from '../db/schema';
+import { carts, cartItems, products, orders, orderItems } from '../db/schema';
 import { eq, and, gte, sql } from 'drizzle-orm';
 import { AppError } from '../errors/AppError';
 import { calculateSubtotal, calculateDiscount } from '../utils/money';
@@ -92,16 +92,7 @@ export async function checkout(input: CheckoutInput) {
 
     const totalCents = subtotalCents - discountCents;
 
-    // Step 5: Increment the global order counter and get the new order number
-    await tx
-      .update(orderCounter)
-      .set({ count: sql`${orderCounter.count} + 1` })
-      .where(eq(orderCounter.id, 1));
-
-    const counterRows = await tx.select().from(orderCounter).where(eq(orderCounter.id, 1));
-    const orderNumber = counterRows[0].count;
-
-    // Step 6: Create the order and snapshot each line item with its price at this moment
+    // Step 5: Create the order and snapshot each line item with its price at this moment
     await tx.insert(orders).values({
       id: orderId,
       cartId: input.cartId,
@@ -110,7 +101,6 @@ export async function checkout(input: CheckoutInput) {
       discountCents,
       totalCents,
       couponId,
-      orderNumber,
     });
 
     const lineItems = items.map((item) => ({
@@ -125,7 +115,7 @@ export async function checkout(input: CheckoutInput) {
 
     await tx.insert(orderItems).values(lineItems);
 
-    return { id: orderId, cartId: input.cartId, idempotencyKey: input.idempotencyKey, subtotalCents, discountCents, totalCents, orderNumber, items: lineItems };
+    return { id: orderId, cartId: input.cartId, idempotencyKey: input.idempotencyKey, subtotalCents, discountCents, totalCents, items: lineItems };
   });
 
   return { order: result, isRetry: false };

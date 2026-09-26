@@ -36,7 +36,6 @@ export const orders = sqliteTable('orders', {
   discountCents:  integer('discount_cents').notNull().default(0),
   totalCents:     integer('total_cents').notNull(),
   couponId:       text('coupon_id'),
-  orderNumber:    integer('order_number').notNull(),
   createdAt:      text('created_at').default(sql`CURRENT_TIMESTAMP`),
 });
 
@@ -67,10 +66,4 @@ export const coupons = sqliteTable('coupons', {
 export const systemConfig = sqliteTable('system_config', {
   key:   text('key').primaryKey(),
   value: text('value').notNull(),
-});
-
-// Monotonically increasing counter — source of truth for order numbering and coupon milestones
-export const orderCounter = sqliteTable('order_counter', {
-  id:    integer('id').primaryKey(),
-  count: integer('count').notNull().default(0),
 });
