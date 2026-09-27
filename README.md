@@ -1,4 +1,4 @@
-# CartEngine API — Checkout & Rewards Service
+# CartEngine API - Checkout & Rewards Service
 
 This repository contains the backend implementation for a robust e-commerce checkout and rewards service. It handles cart management, concurrent inventory deduction, idempotency, and a milestone-based coupon generation system.
 
@@ -13,7 +13,7 @@ For a detailed breakdown of the architectural choices, concurrency handling, and
 ### 1. Installation
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/vnaveenprasanth/cartengine.git
 cd <repository-dir>
 npm install
 ```
