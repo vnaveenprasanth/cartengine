@@ -136,3 +136,118 @@ Zero. A percentage discount is always less than 100%, and `Math.floor` keeps it 
 **Why:** This is a single atomic statement. The WHERE clause ensures the decrement only applies if inventory is still sufficient at the exact moment the update runs. Two concurrent transactions race for the same row. SQLite serialises the writes, so only one can decrement successfully when inventory equals the requested quantity. The `rowsAffected` check immediately tells us if we lost the race.
 
 **Consequences:** Inventory correctness is guaranteed by the database, not by application-level coordination. The losing checkout receives a clear 422 with `INSUFFICIENT_INVENTORY`. No negative inventory is possible.
+
+---
+
+## Transaction, Concurrency, and Idempotency Strategy
+
+**Transactions:** Every checkout runs inside a single `db.transaction()`. All mutations — cart status lock, per-item inventory deductions, coupon redemption, order creation, order-item inserts — commit atomically or roll back together.
+
+**Concurrency model:** SQLite with WAL (Write-Ahead Logging) mode. WAL allows concurrent readers without blocking writers. Writers are serialised by the database. The conditional UPDATE patterns described above are the concurrency control mechanism — we don't rely on application-level locks.
+
+**Idempotency:** Checkout accepts a client-supplied `idempotencyKey` (UUID format, validated by Zod). A SELECT before the transaction returns the existing order immediately if the key was already used. The UNIQUE constraint on `orders.idempotency_key` is the hard stop for any race on first-time submission.
+
+**Coupon safety in transactions:** The coupon status UPDATE runs inside the checkout transaction. If the transaction rolls back for any reason (inventory failure, empty cart, etc.), the coupon is untouched. A coupon cannot be consumed by a checkout that did not produce an order.
+
+---
+
+## Money and Rounding Rules
+
+- All monetary values are stored and computed in **integer cents** (e.g., $9.99 → 999).
+- There is no floating-point arithmetic anywhere in the money path. Database columns are `INTEGER`. JavaScript arithmetic uses integer multiplication and `Math.floor`.
+- Discount calculation: `Math.floor((subtotalCents * discountPercent) / 100)`. The floor rounds fractional cents down, which benefits the merchant by a fraction of a cent. The customer never gets more discount than calculated.
+- Total: `subtotalCents - discountCents`. With a percentage discount below 100%, this is always ≥ 0.
+- API responses return all monetary amounts in cents. Display formatting (e.g., `$9.99`) is the client's responsibility.
+
+---
+
+## Error Model Choices
+
+All errors return a consistent JSON shape:
+
+```json
+{ "error": { "code": "MACHINE_READABLE_CODE", "message": "Human readable explanation" } }
+```
+
+HTTP status mapping:
+- `400` — request validation failure (Zod schema rejection, malformed JSON)
+- `404` — resource not found (cart, product, order does not exist)
+- `409` — state conflict (cart already checked out, coupon already generated for this milestone, coupon already redeemed)
+- `422` — business rule violation (empty cart at checkout, insufficient inventory, coupon code unknown)
+- `500` — unexpected server error (unhandled exceptions)
+
+---
+
+## Implemented vs Intentionally Deferred
+
+**Implemented:** 
+- Full cart lifecycle (create, add, update quantity, remove, view with live prices and totals)
+- Checkout with idempotency key, inventory deduction, coupon redemption, and order snapshotting
+- Coupon generation with milestone enforcement and race-condition safety via UNIQUE constraint
+- Coupon redemption inside the checkout transaction (atomically safe)
+- Admin report (per-product sales quantities, gross/discount/net revenue, coupon stats)
+- Admin order and coupon listing
+- Swagger UI documentation at `/api-docs`
+- Integer-cent money arithmetic throughout
+- Structured, machine-readable error responses with stable `code` fields
+- Auto-migration and seed on first start
+
+**Intentionally deferred:**
+- **Authentication/authorisation:** Explicitly excluded by the spec. The `/api/admin/*` namespace boundary makes adding an `isAdmin` middleware a one-line change in `app.ts`.
+- **Rate limiting:** No throttle on coupon generation or checkout retries. In production, a rate limiter on `/api/checkout` would prevent abuse.
+- **Idempotency on cart mutations:** `POST /api/carts/:id/items` is not idempotent. A retry could re-add a quantity. Mitigated by the UNIQUE `(cartId, productId)` constraint which accumulates quantity rather than duplicating rows — but client-supplied idempotency keys on cart mutations would be cleaner.
+- **Pagination:** List endpoints return all rows. Acceptable for seed data volumes; production would need cursor or offset pagination.
+- **Async events:** No order-placed events or webhooks. A real system would publish to a message broker for email confirmation, warehouse fulfillment, and analytics.
+- **Automated coupon generation:** Coupons require a manual admin trigger. Auto-generation inside checkout was considered but rejected as it couples two concerns and adds latency to the checkout path.
+- **Cart expiry / TTL:** Active carts are never cleaned up. A background job to expire stale carts would be needed in production.
+
+---
+
+## How the Design Would Evolve for Multiple Service Instances
+
+**Current constraint:** SQLite can only be safely written by one process at a time. WAL mode helps with concurrency within a single process but doesn't support multiple application instances writing to the same file.
+
+**Migration path to PostgreSQL + horizontal scaling:**
+
+1. **Database swap:** Move to PostgreSQL. Drizzle ORM supports PostgreSQL; the schema and query code would require minimal changes (column types, some syntax differences). The conditional UPDATE patterns carry over identically.
+
+2. **Idempotency hardening:** With multiple instances, two instances could both pass the pre-check SELECT and race to INSERT. PostgreSQL's `INSERT ... ON CONFLICT DO NOTHING RETURNING *` or a dedicated idempotency table with advisory locks would close this window.
+
+3. **Coupon generation:** The UNIQUE constraint on `milestone_order_number` remains the safety net. For very high concurrency (unlikely for admin actions), a `SELECT ... FOR UPDATE` on a config row would serialise generation requests.
+
+4. **Inventory:** The conditional UPDATE pattern works identically in PostgreSQL and is the recommended pattern for inventory systems. Row-level locking (`SELECT ... FOR UPDATE`) becomes available as an alternative if needed for longer-running checkout flows.
+
+5. **No session affinity required:** All state is in the database. Any instance can handle any request for any cart. No sticky sessions needed.
+
+6. **Connection pooling:** With multiple instances, a connection pooler (PgBouncer) in front of PostgreSQL would be standard.
+
+---
+
+## How I Used AI Tools
+
+I used Gemini and Claude models (via the Antigravity IDE) throughout this project as a pair programmer, primarily for scaffolding, boilerplate, and code structure, while making the architectural decisions myself and reviewing everything generated.
+
+**Where AI accelerated the work:**
+- Generating the Drizzle schema skeleton from a description of the domain and my inputs
+- Setting up Express router/middleware patterns and error handling structure
+- Writing the Zod validation schemas for request bodies
+- Wiring up Swagger 
+- Writing test cases based on the business logic I provided
+
+**Where I redirected or rejected AI output:**
+
+The most significant example was the **order counter table**. The AI proposed adding a `counters` table with a `total_orders` integer row that would be incremented atomically inside every checkout transaction. The motivation was to avoid scanning the `orders` table for milestone calculation.
+
+I rejected this. The problem is that a single frequently-written row becomes a serialisation bottleneck — every checkout in the system would queue behind every other checkout waiting to increment the counter. For coupon milestone evaluation (a low-frequency admin operation), `COUNT(orders)` is entirely sufficient. I explicitly instructed the AI to remove the counter table from the schema and migration, which it did. The trade-off — an O(n) count query on a low-frequency admin path vs. a write bottleneck on every checkout — is clearly in favour of the COUNT approach.
+
+A second case: Tool selection and concurrency logic. While the AI is efficient at writing generic CRUD code, I explicitly dictated the technology stack (Drizzle ORM for type-safe queries, Zod for validation, Vitest for process-isolated testing) to ensure a robust foundation. Furthermore, I directly guided the AI to write the critical concurrency safeguards — such as the atomic conditional `UPDATE` for inventory deduction and the `UNIQUE` constraint for coupon redemption — rather than relying on the naive application-level read-modify-write patterns it often defaulted to and cases like this throughout the project.
+
+---
+
+## What I Would Examine First Given Another Two Hours
+
+1. **Report consistency** — The current report runs several separate SELECT queries. Orders created between the revenue aggregation query and the coupon count query could make the numbers slightly inconsistent. Wrapping the report in a `db.transaction()` (read-only) would make the snapshot perfectly consistent.
+
+2. **Checkout Session Price Lock** — Introduce an intermediate `POST /api/checkout/session` step that freezes the cart prices for a fixed window (e.g. 15 minutes). This closes the gap where a price changes between when the customer views their cart and when they actually submit the order.
+
+3. **Multi-currency support** — The current schema assumes a single base currency (implicitly USD, stored as `cents`). To support internationalization, we would need to add a `currency` column ('USD' or 'EUR') to the `products` and `orders` tables, and ensure the business logic explicitly handles or rejects mixed-currency carts.
