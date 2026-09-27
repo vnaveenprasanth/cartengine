@@ -11,6 +11,7 @@ export default defineConfig({
     // a completely isolated database. Tests within the same file share one DB.
     pool: 'forks',
     testTimeout: 30000,
+    hookTimeout: 30000,
     include: ['src/test/**/*.test.ts'],
   },
 });
