@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import { db, initDB } from './connection';
 import { migrate } from 'drizzle-orm/libsql/migrator';
-import { products, systemConfig, orderCounter } from './schema';
+import { products, systemConfig } from './schema';
 import { eq } from 'drizzle-orm';
 import path from 'path';
 
@@ -31,9 +31,6 @@ async function seed() {
     { key: 'coupon_order_interval', value: '5' },
     { key: 'coupon_discount_percent', value: '10' },
   ]);
-
-  // Initialize the order counter row
-  await db.insert(orderCounter).values([{ id: 1, count: 0 }]);
 
   console.log(`Seeded ${SEED_PRODUCTS.length} products`);
   console.log('System config: every 5th order generates a 10% coupon');
