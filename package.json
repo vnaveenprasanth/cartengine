@@ -7,6 +7,9 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "ts-node-dev --transpile-only src/db/migrate.ts",
     "db:seed": "ts-node-dev --transpile-only src/db/seed.ts"
@@ -28,10 +31,14 @@
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.6",
     "@types/node": "^22.14.0",
+    "@types/supertest": "^7.2.1",
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.8",
+    "@vitest/coverage-v8": "^4.1.11",
     "drizzle-kit": "^0.31.11",
+    "supertest": "^7.3.0",
     "ts-node-dev": "^2.0.0",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.11"
   }
 }
